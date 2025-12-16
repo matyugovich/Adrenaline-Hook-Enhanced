@@ -1,65 +1,55 @@
-![Adrenaline Hook - Copy](https://github.com/user-attachments/assets/fc06c1f1-0f69-4b73-9e00-2f7c977fbf0b)
+# ⚡ Adrenaline Hook Enhanced
 
-<img width="635" height="409" alt="1" src="https://github.com/user-attachments/assets/5ff5d836-9741-4b2a-a19c-9086132bb182" />
+![Version](https://img.shields.io/badge/version-1.0.3.0-blue.svg) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 
-Adrenaline Hook is a utility developed to seamlessly integrate UWP, and GamePass titles into AMD Adrenalin Software. Due to Microsoft’s DRM restrictions, manually adding GamePass executables to Adrenalin is typically not possible without complex and temporary workarounds that often break after game updates.
+**An improved fork of Adrenaline Hook with Custom Path Scanning, RTSS Integration, and Silent Operation.**
 
-Many GamePass games are not automatically detected by AMD Adrenalin, which prevents users from taking advantage of key AMD features like Frame Generation, Image Sharpening, and more. Adrenaline Hook eliminates this limitation.
+### 📖 Why "Enhanced"?
+This project builds upon the original Adrenaline Hook by adding critical features requested by power users. While the original tool successfully hooked UWP games, this version expands compatibility significantly:
 
-Example:
-![1](https://github.com/user-attachments/assets/6efb72ae-c272-4c41-b3c5-87ed97653b45)
+* **📂 Custom Path Scanning:** No longer limited to just UWP/Store apps. **You can now recursively scan any folder** (e.g., `D:\Games`, `C:\Mods`) to find and hook executables anywhere.
+* **📊 Native RTSS Support:** Directly integrates with **RivaTuner Statistics Server**. It injects the game profile into RTSS automatically, fixing overlay detection issues common with UWP titles.
+* **👻 True Silent Mode:** Recompiled to ensure absolutely **no console window** appears during execution.
+* **🛡️ Robust Elevation:** Improved auto-elevation logic ensures registry writes never fail silently.
 
-With a simple click on “Scan MS Store/GamePass Games”, the tool will display all installed UWP apps and games. You can then select the titles you wish to hook into AMD Adrenalin.
+---
 
-![2](https://github.com/user-attachments/assets/de1812fc-983a-4721-b1e3-8ad5ce39546a)
-Note: Games already added to AMD Adrenalin will be highlighted in dark red.
+### ✨ Feature Breakdown
 
-Once hooked, the selected game will appear in AMD Adrenalin, allowing you to configure and optimize its graphics settings.
+| Feature | Enhanced Functionality |
+| :--- | :--- |
+| **Custom Path Scan** | **(New)** Recursively searches any user-selected folder to find games installed in non-standard locations. |
+| **RTSS Injection** | **(New)** Automatically adds the targeted executable to the RivaTuner list for FPS limiting and OSD support. |
+| **UWP / Game Pass** | Standard scanning for all installed Microsoft Store applications. |
+| **Adrenalin Hook** | Forces the game into the AMD Driver to unlock **RSR**, **Boost**, **Anti-Lag**, and **Chill**. |
+| **Clean Unhook** | Removes the game profile and scrubs registry entries to prevent driver conflicts. |
 
-![4](https://github.com/user-attachments/assets/7cc09e2b-cd7a-4aa4-823f-84c1c361cb3e)
+---
 
-Other Key Features Include:
+### 📥 Installation & Usage
 
-- Hook games from additional platforms such as Steam, Epic Games Launcher, and others.
+1.  Download **`Adrenaline Hook.exe`** from the [**Releases**](../../releases) page.
+2.  Run the application (Admin rights will be requested for registry access).
 
-  ![6](https://github.com/user-attachments/assets/e60b2439-8ae7-4b01-87bf-c816d6a667c4)
+#### 🛠️ Workflow:
+1.  **Scan:**
+    * Click **Scan Games** for standard Game Pass titles.
+    * **OR** Click **Custom Path** to browse any folder on your drives.
+2.  **Select:** Click the game you wish to modify.
+3.  **Action:**
+    * Click **Hook** to enable AMD Driver features.
+    * Click **Add to RTSS** if you need the performance overlay.
 
-- Manually hook custom executable files.
-- View and remove previously hooked applications.
+---
 
-  ![8](https://github.com/user-attachments/assets/afe35285-e167-4f8f-98a0-7d816b92255e)
+### 📝 Build Source (v1.0.3.0)
 
-- Create and restore backups of the AMD Adrenalin game database.
+This version is compiled using **PS2EXE** with specific flags for silent, elevated operation:
 
-I hope you find this tool useful :)
-
-## Run instructions:
-
-⚠️ Important Disclaimer
-```
-    This script modifies AMD Adrenalin configuration files and interacts with your system.
-    It is your responsibility to review and understand the code before running it.
-    By using this utility, you acknowledge that you do so at your own risk.
-    The creator(s) cannot be held liable for any issues or damages resulting from its use.
-    Always back up important files and check the script for trustworthiness.
-```
-Steps: 
-1. Open powershell or CMD in administrator mode (right click application).
-
-https://learn.microsoft.com/en-us/answers/questions/1338912/how-to-run-powershell-as-administrator
-1. Using commands 'cd' and 'dir' navigate to the downloaded file. example: 
-```powershell #
-    cd c:/users/*your user name*/Downloads/Adrenaline-Hook-1.0.7
-```
-
-3. Execute the script using: 
-```powershell #
-    & '.\Adrenaline Hook - Source Code.ps1'
-```
-### Possible issues:
-- When running the script you could can get the error that scripts are not allowed to be ran on the system. Suggested executable fix: 
-```Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass```  
-
-(Choose Y afterwards)
-
-https://medium.com/@saviranathunge/powershell-script-execution-issues-35d66afec502
+```powershell
+Invoke-PS2EXE -InputFile "Adrenaline Hook.ps1" `
+              -OutputFile "Adrenaline Hook.exe" `
+              -IconFile "image.ico" `
+              -requireAdmin `
+              -noConsole `
+              -version "1.0.3.0"
