@@ -47,25 +47,76 @@ function Stop-Adrenalin {
 }
 
 function Start-Adrenalin {
-    $targetAppName = "AMD Software"
-    $app = Get-StartApps -Name $targetAppName -ErrorAction SilentlyContinue
-    
-    if ($app) { 
-        Start-Process "shell:AppsFolder\$($app.AppID)" 
+    param([switch]$Minimized)
+
+    # Prefer the installed EXE if available (better control over args/minimize behavior)
+    $x86 = ${env:ProgramFiles(x86)}
+    $possiblePaths = @(
+        "$env:ProgramFiles\AMD\CNext\CNext\RadeonSoftware.exe",
+        "$env:ProgramFiles\AMD\Radeon Software\RadeonSoftware.exe",
+        "$env:ProgramFiles\AMD\CNext\CNext\AMDRSServ.exe",
+        "$x86\AMD\CNext\CNext\RadeonSoftware.exe"
+    )
+    $foundPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+    if ($foundPath) {
+        $workDir = Split-Path -Parent $foundPath
+        if ($Minimized) {
+            # Use -atlogon argument (empirically causes Adrenaline to start minimized to tray) and request Minimized window style
+            Start-Process -FilePath $foundPath -ArgumentList "-atlogon" -WorkingDirectory $workDir -WindowStyle Minimized -ErrorAction SilentlyContinue
+        }
+        else {
+            Start-Process -FilePath $foundPath -WorkingDirectory $workDir -ErrorAction SilentlyContinue
+        }
     }
     else {
-        # Fix for ProgramFiles(x86) variable syntax access in PS
-        $x86 = ${env:ProgramFiles(x86)}
-        $possiblePaths = @(
-            "$env:ProgramFiles\AMD\CNext\CNext\RadeonSoftware.exe",
-            "$env:ProgramFiles\AMD\Radeon Software\RadeonSoftware.exe",
-            "$env:ProgramFiles\AMD\CNext\CNext\AMDRSServ.exe",
-            "$x86\AMD\CNext\CNext\RadeonSoftware.exe"
-        )
-        $foundPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-        
-        if ($foundPath) { Start-Process $foundPath }
+        # Fall back to Appx/Store launch if EXE not found
+        $targetAppName = "AMD Software"
+        $app = Get-StartApps -Name $targetAppName -ErrorAction SilentlyContinue
+        if ($app) {
+            $appArg = "shell:AppsFolder\$($app.AppID)"
+            if ($Minimized) { Start-Process -FilePath "explorer.exe" -ArgumentList $appArg -WindowStyle Minimized -ErrorAction SilentlyContinue }
+            else { Start-Process $appArg -ErrorAction SilentlyContinue }
+        }
         else { [System.Windows.Forms.MessageBox]::Show("AMD Software executable not found.`nPlease launch it manually.", "Launch Failed", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) }
+    }
+
+    if ($Minimized) { Minimize-ProcessWindow -Names @("RadeonSoftware","AMDRSServ","cncmd") }
+}
+
+function Minimize-ProcessWindow {
+    param(
+        [string[]]$Names = @("RadeonSoftware","AMDRSServ","cncmd"),
+        [int]$TimeoutSeconds = 6
+    )
+
+    # Best-effort: attempt to minimize any visible main windows for the given process names
+    try {
+        Add-Type -MemberDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class Win32ShowWindow {
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+}
+"@ -Name "Win32ShowWindow" -Namespace "Win32" -ErrorAction SilentlyContinue
+    } catch { }
+
+    $swMinimize = 2
+    $end = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $end) {
+        foreach ($name in $Names) {
+            $procs = Get-Process -Name $name -ErrorAction SilentlyContinue
+            foreach ($p in $procs) {
+                try {
+                    $h = $p.MainWindowHandle
+                    if ($h -ne 0) { [Win32.Win32ShowWindow]::ShowWindow($h, $swMinimize) | Out-Null }
+                } catch { }
+            }
+        }
+        Start-Sleep -Milliseconds 250
     }
 }
 
@@ -119,8 +170,6 @@ function Show-AMDHook_psf {
     $blbPath = "$env:LOCALAPPDATA\AMD\CN\backup.blb"
     if (Test-Path $blbPath) { Remove-Item $blbPath -Force }
     
-    Stop-Adrenalin
-    
     function Show-JsonEditor
     {
         $editorForm = New-Object Windows.Forms.Form
@@ -132,7 +181,6 @@ function Show-AMDHook_psf {
         $textBox.ScrollBars = 'Both'
         $textBox.Dock = 'Fill'
         
-        Stop-Adrenalin
         $textBox.Text = Get-Content $gmdbPath -Raw
         
         $btnSave = New-Object Windows.Forms.Button
@@ -432,7 +480,6 @@ function Show-AMDHook_psf {
     }
     
     $buttonHookSelections_Click = {
-        Stop-Adrenalin
         
         $selectedItems = $listView.CheckedItems | ForEach-Object {
             [PSCustomObject]@{
@@ -448,7 +495,7 @@ function Show-AMDHook_psf {
             return
         }
         
-        $msgList = ($selectedItems | ForEach-Object { " • " + $_.Name }) -join "`n"
+$msgList = ($selectedItems | ForEach-Object { " - " + $_.Name }) -join "`n"
         $msg = "Do you want to hook the following apps?`n`n$msgList"
         $result = [System.Windows.Forms.MessageBox]::Show($msg, "Confirm Hook", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
         
@@ -469,7 +516,7 @@ function Show-AMDHook_psf {
             foreach ($app in $selectedItems)
             {
                 if ($currentTitles -contains $app.Name) {
-                    $resultsLog += " • $($app.Name): Skipped (Duplicate)"
+                    $resultsLog += " - $($app.Name): Skipped (Duplicate)"
                     continue
                 }
 
@@ -489,10 +536,13 @@ function Show-AMDHook_psf {
                 
                 $json.games = @($json.games) + $newGame
                 $successfullyHooked += $app
-                $resultsLog += " • $($app.Name): Hooked Successfully"
+                $resultsLog += " - $($app.Name): Hooked Successfully"
             }
             
-            $json | ConvertTo-Json -Depth 100 | Set-Content -Path $gmdbPath -Encoding UTF8
+            if ($successfullyHooked.Count -gt 0) {
+                Stop-Adrenalin
+                $json | ConvertTo-Json -Depth 100 | Set-Content -Path $gmdbPath -Encoding UTF8
+            }
             $listView.Items.Clear()
             
             $summaryMsg = $resultsLog -join "`n"
@@ -501,11 +551,12 @@ function Show-AMDHook_psf {
             
             if ($successfullyHooked.Count -gt 0)
             {
-                $addedTitles = $successfullyHooked | ForEach-Object { " • " + $_.Name } | Out-String
-                $restartMsg = "To configure the following application(s), you may need to restart AMD Adrenaline Software:`n`n$addedTitles`nWould you like to open it now?"
+                $addedTitles = $successfullyHooked | ForEach-Object { " - " + $_.Name } | Out-String
+                $restartMsg = "To configure the following application(s), you may need to restart AMD Adrenaline Software:`n`n$addedTitles`nWould you like to open it now?`n`n(If No, AMD Software will be started minimized to the system tray.)"
                 $restartConfirm = [System.Windows.Forms.MessageBox]::Show($restartMsg, "Open AMD Software?", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
 
                 if ($restartConfirm -eq "Yes") { Start-Adrenalin }
+                else { Start-Adrenalin -Minimized }
             }
         }
         catch { [System.Windows.Forms.MessageBox]::Show("Error saving database: $_", "Operation Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) }
@@ -618,7 +669,6 @@ function Show-AMDHook_psf {
     }
 
     $buttonHookProgramManually_Click = {
-        Stop-Adrenalin
         $dialog = New-Object Windows.Forms.OpenFileDialog
         $dialog.Filter = "Executable Files (*.exe)|*.exe"
         $dialog.InitialDirectory = "C:\"
@@ -659,10 +709,12 @@ function Show-AMDHook_psf {
         }
         
         $json.games = @($json.games) + $newGame
+        Stop-Adrenalin
         $json | ConvertTo-Json -Depth 100 | Set-Content -Path $gmdbPath -Encoding UTF8
         
-        [System.Windows.Forms.MessageBox]::Show("$title hooked successfully!", "Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
-        Get-Process -Name "RadeonSoftware" -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.Id -Force }
+        $restartMsg = "To configure '$title', you may need to restart AMD Adrenaline Software.`nWould you like to open it now?`n`n(If No, AMD Software will be started minimized to the system tray.)"
+        $restartConfirm = [System.Windows.Forms.MessageBox]::Show($restartMsg, "Open AMD Software?", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($restartConfirm -eq "Yes") { Start-Adrenalin } else { Start-Adrenalin -Minimized }
     }
     
     $buttonOpenAMDSoftware_Click ={ Start-Adrenalin }
@@ -679,7 +731,6 @@ function Show-AMDHook_psf {
         }
         
         try {
-            Stop-Adrenalin
             $json = Get-Content $gmdbPath -Raw | ConvertFrom-Json
             if ($null -eq $json.games) { $json.games = @() }
             
@@ -791,7 +842,6 @@ function Show-AMDHook_psf {
         }
         
         try {
-            Stop-Adrenalin
             $json = Get-Content $gmdbPath -Raw | ConvertFrom-Json
             if ($null -eq $json.games) { $json.games = @() }
             
@@ -982,7 +1032,6 @@ function Show-AMDHook_psf {
         if (Test-Path $gmdbPath)
         {
             try {
-                Stop-Adrenalin
                 $jsonContent = Get-Content $gmdbPath -Raw | ConvertFrom-Json
                 if ($null -eq $jsonContent.games) { $jsonContent.games = @() }
                 
@@ -1014,7 +1063,6 @@ function Show-AMDHook_psf {
         if (-not (Test-Path $gmdbPath)) { [System.Windows.Forms.MessageBox]::Show("No gmdb.blb file found.", "File Not Found", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning); return }
         
         try {
-            Stop-Adrenalin
             $json = Get-Content $gmdbPath -Raw | ConvertFrom-Json
             if ($null -eq $json.games) { $json.games = @() }
             $games = @($json.games)
@@ -1050,18 +1098,20 @@ function Show-AMDHook_psf {
                     $selected = $lv.CheckedItems
                     if ($selected.Count -eq 0) { [System.Windows.Forms.MessageBox]::Show("No application(s) selected.", "Selection Error", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning); return }
                     
-                    Stop-Adrenalin
                     # Use .Tag to get the real title
                     $titlesToRemove = $selected | ForEach-Object { $_.Tag }
                     
-                    $listStr = ($selected | ForEach-Object { " • " + $_.Text }) -join "`n"
+                    $listStr = ($selected | ForEach-Object { " - " + $_.Text }) -join "`n"
                     $msg = "Are you sure you want to remove the following application(s)?`n`n$listStr"
                     $confirm = [System.Windows.Forms.MessageBox]::Show($msg, "Confirm Removal", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
                     if ($confirm -eq "Yes") {
+                        Stop-Adrenalin
                         $json.games = @($json.games) | Where-Object { $titlesToRemove -notcontains $_.title }
                         $json | ConvertTo-Json -Depth 100 | Set-Content -Path $gmdbPath -Encoding UTF8
                         $popup.Close()
-                        [System.Windows.Forms.MessageBox]::Show("Selected application(s) have been removed.", "Removal Success", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+                        $restartMsg = "Selected application(s) have been removed.`nYou may need to restart AMD Adrenaline Software to apply changes.`nWould you like to open it now?`n`n(If No, AMD Software will be started minimized to the system tray.)"
+                        $restartConfirm = [System.Windows.Forms.MessageBox]::Show($restartMsg, "Restart AMD Software?", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                        if ($restartConfirm -eq "Yes") { Start-Adrenalin } else { Start-Adrenalin -Minimized }
                     }
                 })
             
@@ -1156,7 +1206,6 @@ function Show-AMDHook_psf {
     
     $verify_Click={
         try {
-            Stop-Adrenalin
             $json = Get-Content $gmdbPath -Raw | ConvertFrom-Json
             if ($null -eq $json.games) { $json.games = @() }
             $gamesArray = @($json.games)
@@ -1178,12 +1227,12 @@ function Show-AMDHook_psf {
             $infoMsg =  "Database Statistics:`n" +
                         "--------------------------------`n" +
                         "Total Games:      $totalCount`n" +
-                        "   • Manual:      $manualCount`n" +
-                        "   • Auto-Found:  $autoCount`n`n" +
+                        "   - Manual:      $manualCount`n" +
+                        "   - Auto-Found:  $autoCount`n`n" +
                         "Executable Status:`n" +
                         "--------------------------------`n" +
-                        "   • Valid Paths: $validPathCount`n" +
-                        "   • Missing:     $missingPathCount"
+                        "   - Valid Paths: $validPathCount`n" +
+                        "   - Missing:     $missingPathCount"
 
             [System.Windows.Forms.MessageBox]::Show($infoMsg, "Database Verification", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
         } catch {
