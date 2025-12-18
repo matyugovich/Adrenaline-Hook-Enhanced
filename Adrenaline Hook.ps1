@@ -81,10 +81,10 @@ function Start-Adrenalin {
         else { [System.Windows.Forms.MessageBox]::Show("AMD Software executable not found.`nPlease launch it manually.", "Launch Failed", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) }
     }
 
-    if ($Minimized) { Minimize-ProcessWindow -Names @("RadeonSoftware","AMDRSServ","cncmd") }
+    if ($Minimized) { Invoke-ProcessWindowMinimize -Names @("RadeonSoftware","AMDRSServ","cncmd") }
 }
 
-function Minimize-ProcessWindow {
+function Invoke-ProcessWindowMinimize {
     param(
         [string[]]$Names = @("RadeonSoftware","AMDRSServ","cncmd"),
         [int]$TimeoutSeconds = 6
@@ -1264,9 +1264,9 @@ $msgList = ($selectedItems | ForEach-Object { " - " + $_.Name }) -join "`n"
             Stop-Adrenalin
             $blbPath = "$env:LOCALAPPDATA\AMD\CN\gmdb.blb"
             if (Test-Path $blbPath) { Remove-Item $blbPath -Force }
-            [System.Windows.Forms.MessageBox]::Show("Database has been reset! AMD Adrenaline Software will start minimized to rebuild the database.", "Reset Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
+            [System.Windows.Forms.MessageBox]::Show("Database has been reset! AMD Adrenaline Software will start to rebuild the database.", "Reset Complete", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information)
             
-            Start-Adrenalin -Minimized
+            Start-Adrenalin
         }
     }
     
